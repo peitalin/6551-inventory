@@ -7,6 +7,7 @@ import {PalInventory} from "../src/PalInventory.sol";
 
 import {ERC6551Registry} from "@6551/ERC6551Registry.sol";
 import {ERC6551AccountUpgradeable} from "@6551/examples/upgradeable/ERC6551AccountUpgradeable.sol";
+// use AccountProxy from Solady because the 6551 reference lib uses Openzeppelin v4, v5 deprecates ERC1967Upgrade.sol
 import {ERC6551AccountProxy} from "../src/ERC6551AccountProxy.sol";
 
 import "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
