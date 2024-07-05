@@ -1,0 +1,27 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+
+fs_permissions = [
+  { access = "read-write", path = "./"},
+]
+ffi = true
+ast = true
+build_info = true
+
+remappings = [
+    "@6551/=lib/reference/src/",
+]
+
+[rpc_endpoints]
+holesky = "https://holesky.drpc.org"
+localhost = "http://localhost:8545"
+
+[etherscan]
+holesky = { key = "${ETHERSCAN_API_KEY}" }
+
+
+
+
+# See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
