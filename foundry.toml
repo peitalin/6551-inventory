@@ -12,6 +12,8 @@ build_info = true
 
 remappings = [
     "@6551/=lib/reference/src/",
+    "@openzeppelin-upgradeable/=lib/openzeppelin-contracts-upgradeable/",
+    "@openzeppelin/=lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts",
 ]
 
 [rpc_endpoints]

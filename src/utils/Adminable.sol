@@ -1,14 +1,14 @@
 //SPDX-License-Identifier: MIT
 pragma solidity 0.8.20;
 
-import "@openzeppelin-upgrades/contracts/access/OwnableUpgradeable.sol";
+import "@openzeppelin-upgradeable/contracts/access/OwnableUpgradeable.sol";
 
 contract Adminable is OwnableUpgradeable {
 
     mapping(address => bool) private admins;
 
     function __Adminable_init() internal initializer {
-        OwnableUpgradeable.__Ownable_init();
+        OwnableUpgradeable.__Ownable_init(msg.sender);
     }
 
     function addAdmin(address addr) external onlyOwner {
