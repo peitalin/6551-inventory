@@ -1,5 +1,10 @@
+
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.20;
+
+/// @notice The ERC6551AccountProxy from the 6551 reference library is not compatible with Openzeppelin v5
+/// as Openzeppelin v5 deprecates ERC1967Upgrade.sol which is used in ERC6551AccountProxy.
+/// We use the AccountProxy from Solady instead.
 
 /// @notice Relay proxy for upgradeable ERC6551 accounts.
 /// @author Solady (https://github.com/vectorized/solady/blob/main/src/accounts/ERC6551Proxy.sol)
