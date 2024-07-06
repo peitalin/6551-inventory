@@ -11,6 +11,7 @@ contract PalInventory is ERC6551AccountUpgradeable, Initializable {
     function initialize() initializer public {
     }
 
-    // function token() public view override returns () {}
+    // function token() public view override returns (uint256, address, uint256) {
+    // }
 
 }
