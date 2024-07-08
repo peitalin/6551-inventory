@@ -5,11 +5,8 @@ import {Initializable} from "@openzeppelin-upgradeable/contracts/proxy/utils/Ini
 import {ERC721URIStorageUpgradeable} from "@openzeppelin-upgradeable/contracts/token/ERC721/extensions/ERC721URIStorageUpgradeable.sol";
 import {Adminable} from "./utils/Adminable.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
-import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
-import "forge-std/Test.sol";
 
-
-contract Pal721 is Initializable, IERC721Receiver, ERC721URIStorageUpgradeable, Adminable {
+contract Potion721 is Initializable, ERC721URIStorageUpgradeable, Adminable {
 
     uint256 private _tokenIdCounter;
 
@@ -22,28 +19,13 @@ contract Pal721 is Initializable, IERC721Receiver, ERC721URIStorageUpgradeable, 
         __Adminable_init();
     }
 
-    function mint(address user) public onlyAdminOrOwner returns (uint256) {
+    function mint(address user) public returns (uint256) {
         uint256 tokenId = _tokenIdCounter;
         _safeMint(user, tokenId);
-        _setTokenURI(tokenId, string(abi.encodePacked("pals/", Strings.toString(tokenId), ".json")));
+        _setTokenURI(tokenId, string(abi.encodePacked("potions/", Strings.toString(tokenId), ".json")));
         ++_tokenIdCounter;
         return tokenId;
     }
-
-    function onERC721Received(
-        address operator,
-        address from,
-        uint256 tokenId,
-        bytes calldata data
-    ) external view override returns (bytes4) {
-        console.log("");
-        console.log("onERC721Received -> call canEquip() hook");
-        console.log("operator: ", operator);
-        console.log("from: ", from);
-        console.logBytes(data);
-        return IERC721Receiver.onERC721Received.selector;
-    }
-
 
     function _baseURI() internal view override returns (string memory) {
         return "ifps://";
