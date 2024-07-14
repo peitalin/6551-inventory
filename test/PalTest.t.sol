@@ -2,23 +2,25 @@
 pragma solidity 0.8.20;
 
 import {Test, console} from "forge-std/Test.sol";
-
-import {Pal721} from "../src/Pal721.sol";
-import {PalInventory} from "../src/PalInventory.sol";
-import {IEquipRules} from "../src/EquipRules/IEquipRules.sol";
-import {PotionEquipRules} from "../src/EquipRules/PotionEquipRules.sol";
-
-import {Potion721} from "../src/Potion721.sol";
+import "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
+import "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
 
 import {ERC6551Registry} from "@6551/ERC6551Registry.sol";
 import {ERC6551AccountUpgradeable} from "@6551/examples/upgradeable/ERC6551AccountUpgradeable.sol";
-
 import {IERC6551Account} from "@6551/interfaces/IERC6551Account.sol";
 import {IERC6551Executable} from "@6551/interfaces/IERC6551Executable.sol";
-import {IPalInventory} from "../src/IPalInventory.sol";
 
-import "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
-import "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
+import {IBaseEquipRules} from "../src/EquipRules/IBaseEquipRules.sol";
+import {PotionEquipRules} from "../src/EquipRules/PotionEquipRules.sol";
+import {ResourcesEquipRules} from "../src/EquipRules/ResourcesEquipRules.sol";
+
+import {Potion721} from "../src/items/Potion721.sol";
+import {Resources1155} from "../src/items/Resources1155.sol";
+import {IPalInventory} from "../src/interfaces/IPalInventory.sol";
+import {ERC6551Inventory, Interfaces, EquipConfig} from "../src/ERC6551Inventory.sol";
+import {Pal721} from "../src/Pal721.sol";
+import {PalInventory, DEFAULT_ID} from "../src/PalInventory.sol";
+
 
 
 contract PalTest is Test {
@@ -31,33 +33,51 @@ contract PalTest is Test {
     Pal721 public pal;
     PalInventory public inventory; // instance of palInventory
     Potion721 public potion;
+    Resources1155 public resources;
     PotionEquipRules public potionEquipRules;
+    ResourcesEquipRules public resourcesEquipRules;
 
+    address public owner;
 
     function setUp() public {
 
         proxyAdmin = new ProxyAdmin(msg.sender);
 
         potion = deployPotionsNFT("Potion", "POT");
+        resources = deployResourcesNFT();
 
         potionEquipRules = new PotionEquipRules(3);
+        resourcesEquipRules = new ResourcesEquipRules();
 
-        PalInventory.EquipConfig[] memory equipConfigs = new PalInventory.EquipConfig[](1);
+        uint256 numberOfRules = 2;
 
-        PalInventory.EquipConfig memory potionEquipConfig = PalInventory.EquipConfig({
+        EquipConfig[] memory equipConfigs = new EquipConfig[](numberOfRules);
+
+        // Potion Equip Rules
+        EquipConfig memory potionEquipConfig = EquipConfig({
             nft: address(potion),
-            tokenId: 0,
-            supportedInterface: PalInventory.Interfaces.ERC721,
-            equipRules: IEquipRules(potionEquipRules)
+            tokenId: DEFAULT_ID,
+            supportedInterface: Interfaces.ERC721,
+            equipRules: IBaseEquipRules(potionEquipRules)
         });
-
         equipConfigs[0] = potionEquipConfig;
+        uint256 maxWeight = 15;
+
+        // Resources Equip Rules
+        uint256 resourceTokenId = 0; // say wood
+        EquipConfig memory resourcesEquipConfig = EquipConfig({
+            nft: address(resources),
+            tokenId: resourceTokenId,
+            supportedInterface: Interfaces.ERC1155,
+            equipRules: IBaseEquipRules(resourcesEquipRules)
+        });
+        equipConfigs[1] = resourcesEquipConfig;
 
         registry = new ERC6551Registry();
         pal = deployPalNFT("Pal", "PAL");
-        address owner = vm.addr(1);
+        owner = vm.addr(1);
         uint256 tokenId = mintPal(owner);
-        (palInventoryProxy, inventory) = deployPalInventory(tokenId, equipConfigs);
+        inventory = deployPalInventory(tokenId, maxWeight, equipConfigs);
 
     }
 
@@ -117,40 +137,46 @@ contract PalTest is Test {
         return proxy;
     }
 
+    function deployResourcesNFT() public returns (Resources1155) {
+        vm.startBroadcast();
+        string memory baseURI = "ipfs://";
+        Resources1155 impl = new Resources1155();
+        Resources1155 proxy = Resources1155(
+            address(new TransparentUpgradeableProxy(
+                address(impl),
+                address(proxyAdmin),
+                abi.encodeWithSelector(
+                    impl.initialize.selector,
+                    baseURI
+                )
+            ))
+        );
+        vm.stopBroadcast();
+        return proxy;
+    }
+
     function deployPalInventory(
         uint256 tokenId, // PalTokenId
-        PalInventory.EquipConfig[] memory _equipConfigs
-    ) public returns (PalInventory, PalInventory) {
+        uint256 maxWeight,
+        EquipConfig[] memory _equipConfigs
+    ) public returns (PalInventory) {
         vm.startBroadcast();
 
         palInventoryImpl = new PalInventory();
 
-        // PalInventory palInventoryProxy = PalInventory(
-        //     payable(address(
-        //         new TransparentUpgradeableProxy(
-        //             address(palInventoryImpl),
-        //             address(proxyAdmin),
-        //             abi.encodeWithSelector(
-        //                 palInventoryImpl.initialize.selector,
-        //                 _equipConfigs
-        //             )
-        //         )
-        //     ))
-        // );
-
         bytes32 salt = bytes32(uint256(200));
-        PalInventory inventory = PalInventory(payable(
+        inventory = PalInventory(payable(
             registry.createAccount(
                 address(palInventoryImpl), salt, block.chainid, address(pal), tokenId
             )
         ));
-        // initialized the proxy
-        inventory.initialize(_equipConfigs);
+        // initialize the proxy
+        inventory.initialize(maxWeight, _equipConfigs);
 
         vm.deal(address(inventory), 1 ether);
 
         vm.stopBroadcast();
-        return (palInventoryProxy, inventory);
+        return inventory;
     }
 
     ///////////////////////////////////////////////////
@@ -251,28 +277,66 @@ contract PalTest is Test {
 
     function test_EquipPotionsTooManyTimes() public {
 
-        address owner = vm.addr(1);
-        // address owner = address(pal);
-        console.log("owner is a Pal:", owner);
-
         vm.startPrank(owner);
-        potion.mint(owner);
-        potion.mint(owner);
-        potion.approve(address(inventory), 0); // tokenId = 0
+        uint256 tokenId1 = potion.mint(owner);
+        uint256 tokenId2 = potion.mint(owner);
+        uint256 tokenId3 = potion.mint(owner);
+        uint256 tokenId4 = potion.mint(owner);
+        potion.approve(address(inventory), tokenId1);
+        potion.approve(address(inventory), tokenId2);
+        potion.approve(address(inventory), tokenId3);
+        potion.approve(address(inventory), tokenId4);
 
-        // IEquipRules pRules = palInventoryProxy.getEquipRules(address(potion), 0);
+        // IBaseEquipRules pRules = palInventoryProxy.getEquipRules(address(potion), 0);
         // console.log("proxyrules:", address(pRules));
 
+        EquipConfig memory eConfig = inventory.getEquipConfig(address(potion), tokenId1);
+        console.log("erules:", address(eConfig.equipRules));
+        console.log("owner:", address(owner));
 
-        IEquipRules eRules = inventory.getEquipRules(address(potion), 0);
-        console.log("erules:", address(eRules));
+        inventory.equip(address(potion), tokenId1, 1);
+        inventory.equip(address(potion), tokenId2, 1);
+        inventory.equip(address(potion), tokenId3, 1);
 
-        inventory.equip(address(potion), 0, 1);
-        // inventory.equip(address(potion), 1, 1);
-        // inventory.equip(address(potion), 2, 1);
+        vm.expectRevert(PotionEquipRules.PotionsExceedMaxLimit.selector);
+        inventory.equip(address(potion), tokenId4, 1);
         vm.stopPrank();
 
     }
+
+
+    function test_OverweightWithPotionsAndResources() public {
+
+        vm.startPrank(owner);
+        uint256 tokenId1 = potion.mint(owner);
+        uint256 tokenId2 = potion.mint(owner);
+        uint256 tokenId3 = potion.mint(owner);
+        uint256 tokenId4 = potion.mint(owner);
+        potion.approve(address(inventory), tokenId1);
+        potion.approve(address(inventory), tokenId2);
+        potion.approve(address(inventory), tokenId3);
+        potion.approve(address(inventory), tokenId4);
+        // equip a bunch of potions
+        inventory.equip(address(potion), tokenId1, 1);
+        inventory.equip(address(potion), tokenId2, 1);
+        inventory.equip(address(potion), tokenId3, 1);
+
+        uint256 tokenId10 = resources.mint(owner, 0);
+        for (uint32 i = 0; i < 7; ++i) {
+            resources.mint(owner, 0);
+        }
+        // same tokenIds for 1155 mints
+        resources.setApprovalForAll(address(inventory), true);
+
+        inventory.equip(address(resources), tokenId10, 1);
+        inventory.equip(address(resources), tokenId10, 1);
+        inventory.equip(address(resources), tokenId10, 1);
+        vm.expectRevert(ResourcesEquipRules.ExceedsInventoryMaxWeight.selector);
+        inventory.equip(address(resources), tokenId10, 1);
+
+        vm.stopPrank();
+    }
+
 
 
     // function testPermissionControl() public {

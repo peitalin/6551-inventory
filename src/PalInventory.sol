@@ -2,118 +2,107 @@
 pragma solidity 0.8.20;
 
 import {ERC6551AccountUpgradeable} from "@6551/examples/upgradeable/ERC6551AccountUpgradeable.sol";
-// import {ERC6551AccountUpgradeable} from "./ERC6551AccountUpgradeable.sol";
 import {IERC6551Account} from "@6551/interfaces/IERC6551Account.sol";
 import {IERC6551Executable} from "@6551/interfaces/IERC6551Executable.sol";
 import {Initializable} from "@openzeppelin-upgradeable/contracts/proxy/utils/Initializable.sol";
+import {ERC6551Inventory, Interfaces, EquipConfig} from "./ERC6551Inventory.sol";
 
 import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
-import {BaseHook} from "./BaseHook.sol";
-import {IEquipRules} from "./EquipRules/IEquipRules.sol";
+import {IERC6551Inventory} from "./interfaces/IERC6551Inventory.sol";
+import {IBaseEquipRules} from "./EquipRules/IBaseEquipRules.sol";
+import {HasWeight} from "./items/HasWeight.sol";
 import "forge-std/Test.sol";
 
 
+/// @dev if `allowedItems` is set for DEFAULT_ID as `tokenId`,
+///      that value will be used as default for all collection,
+///      unless specified differently
+uint256 constant DEFAULT_ID = 69420e18;
 
-contract PalInventory is ERC6551AccountUpgradeable, Initializable, BaseHook {
 
-    error MustUseEquipFunction();
+contract PalInventory is ERC6551Inventory, Initializable {
+
     error RestrictMint();
-    error InvalidAddress();
-    error WrongInterface();
-    error CallerIsNotOwner();
+    error UnsupportItemInterface();
 
-    event EquipConfigSet(address, uint256, Interfaces, address);
+    uint256 public inventoryMaxWeight;
+    uint256 public inventoryWeight;
 
-    enum Interfaces { Unsupported, ERC721, ERC1155, DN404, ERC20 }
+    function initialize(
+        uint256 _inventoryMaxWeight,
+        EquipConfig[] memory equipConfigs
+    ) public initializer {
 
-    struct EquipConfig {
-        address nft;
-        uint256 tokenId;
-        Interfaces supportedInterface;
-        IEquipRules equipRules;
-    }
-
-    mapping(address nft => mapping(uint256 tokenId => EquipConfig EquipConfig)) public allowedItems;
-
-    /// @dev number of contracts/tokens using given equipping rules
-    mapping(address => uint256) public equipRulesUsage;
-
-    /// @dev all equipping rules
-    using EnumerableSet for EnumerableSet.AddressSet;
-    EnumerableSet.AddressSet private allEquipRules;
-
-
-    function initialize(EquipConfig[] memory equipConfigs) public initializer {
+        inventoryMaxWeight = _inventoryMaxWeight;
+        inventoryWeight = 0;
 
         for (uint256 i = 0; i < equipConfigs.length; ++i) {
             _setEquipConfigs(equipConfigs[i]);
         }
     }
 
+    function getInventoryMaxWeight() public view returns (uint256) {
+        return inventoryMaxWeight;
+    }
 
-    function _setEquipConfigs(EquipConfig memory equipConfig) internal {
+    function getInventoryWeight() public view returns (uint256) {
+        return inventoryWeight;
+    }
 
-        address newRules = address(equipConfig.equipRules);
-        address oldRules = address(allowedItems[equipConfig.nft][equipConfig.tokenId].equipRules);
-
-        if (newRules != oldRules) {
-            if (oldRules == address(0)) {
-                // no old configs, add new configs
-                if (equipConfig.supportedInterface == Interfaces.Unsupported) revert WrongInterface();
-
-                allEquipRules.add(newRules);
-                equipRulesUsage[newRules]++;
-            } else if (newRules == address(0)) {
-                // empty new configs, remove old configs
-                if (equipRulesUsage[oldRules] == 1) allEquipRules.remove(oldRules);
-
-                equipRulesUsage[oldRules]--;
-                equipConfig.supportedInterface = Interfaces.Unsupported;
-            } else {
-                // update rules
-                if (equipConfig.supportedInterface == Interfaces.Unsupported) revert WrongInterface();
-
-                if (equipRulesUsage[oldRules] == 1) allEquipRules.remove(oldRules);
-                equipRulesUsage[oldRules]--;
-
-                allEquipRules.add(newRules);
-                equipRulesUsage[newRules]++;
-            }
-        }
-        allowedItems[equipConfig.nft][equipConfig.tokenId] = equipConfig;
-        console.log(address(allowedItems[equipConfig.nft][equipConfig.tokenId].equipRules));
-
-        emit EquipConfigSet(equipConfig.nft, equipConfig.tokenId, equipConfig.supportedInterface, newRules);
+    function addInventoryWeight(uint256 weight) external returns (uint256) {
+        /// restrict to equiprules contracts only
+        /// move tokenId -> weight lookup and calculation here, or anyone can call this function
+        console.log("");
+        console.log("msg.sender", msg.sender);
+        inventoryWeight += weight;
+    }
+    function subInventoryWeight(uint256 weight) external returns (uint256) {
+        /// restrict to equiprules contracts only
+        console.log("msg.sender", msg.sender);
+        inventoryWeight -= weight;
     }
 
     function beforeEquip(address nft, uint256 tokenId, uint256 amount) public override returns (bytes4) {
 
-        IEquipRules equipRules = getEquipRules(nft, tokenId);
+        EquipConfig memory equipConfig = getEquipConfig(nft, tokenId);
 
-        equipRules.canEquip(address(this), nft, tokenId, amount);
+        equipConfig.equipRules.canEquip(address(this), nft, tokenId, amount);
 
-        // lookup the correct NftHandler for the NFT
-        // call canEquip() on the NftHandler
-        return BaseHook.beforeEquip.selector;
+        return IERC6551Inventory.beforeEquip.selector;
     }
 
     function afterEquip(address nft, uint256 tokenId, uint256 amount) public override returns (bytes4) {
         // do something
-        return BaseHook.afterEquip.selector;
+        return IERC6551Inventory.afterEquip.selector;
     }
 
-    function equip(address nft, uint256 tokenId, uint256 amount) external returns (uint256) {
+    function equip(address nft, uint256 tokenId, uint256 amount) external override returns (uint256) {
 
         require(_isValidSigner(msg.sender), "Caller is not owner");
 
-        console.log("before");
+        console.log("before...");
         beforeEquip(nft, tokenId, amount);
 
         console.log("transferring...");
-        IERC721(nft).safeTransferFrom(msg.sender, address(this), tokenId);
+        EquipConfig memory equipConfig = getEquipConfig(nft, tokenId);
+        Interfaces supportedInterface = equipConfig.supportedInterface;
+
+        if (supportedInterface == Interfaces.ERC721) {
+            IERC721(nft).safeTransferFrom(msg.sender, address(this), tokenId);
+        } else if (supportedInterface == Interfaces.ERC1155) {
+
+            uint256[] memory tokenIds = new uint256[](1);
+            uint256[] memory values = new uint256[](1);
+            tokenIds[0] = tokenId;
+            values[0] = 1;
+            IERC1155(nft).safeBatchTransferFrom(msg.sender, address(this), tokenIds, values, abi.encode(0));
+        } else {
+            revert UnsupportItemInterface();
+        }
 
         console.log("after...");
         // careful reentrancy
@@ -121,76 +110,42 @@ contract PalInventory is ERC6551AccountUpgradeable, Initializable, BaseHook {
 
     }
 
-    function unequip(address nft, uint256 tokenId) external returns (uint256) {
+    function unequip(address nft, uint256 tokenId) external override returns (uint256) {
         require(_isValidSigner(msg.sender), "Caller is not owner");
         IERC721(nft).safeTransferFrom(address(this), ERC6551AccountUpgradeable.owner(), tokenId);
     }
 
-    function getEquipRules(address nft, uint256 tokenId) public returns (IEquipRules) {
-        if (nft == address(0)) revert InvalidAddress();
+    function getEquipConfig(address nft, uint256 tokenId) public override returns (EquipConfig memory) {
 
-        return allowedItems[nft][tokenId].equipRules;
+        IBaseEquipRules equipRules = allowedItems[nft][tokenId].equipRules;
+
+        if (address(equipRules) == address(0)) {
+            return allowedItems[nft][DEFAULT_ID];
+        } else if (tokenId == DEFAULT_ID) {
+            return allowedItems[nft][DEFAULT_ID];
+        } else {
+            return allowedItems[nft][tokenId];
+        }
     }
 
-
     function beforeExecute(bytes calldata data) public override returns (bytes4) {
-        console.log("before exec");
         bytes4 functionSelector = bytes4(data);
         // "mint(address,uint256)"
         if (functionSelector == 0x6a627842) {
             revert RestrictMint();
         }
-        return BaseHook.beforeExecute.selector;
+        return IERC6551Inventory.beforeExecute.selector;
     }
 
-    function afterExecute(bytes calldata data) public override returns (bytes4) {
+    function afterExecute(
+        bytes calldata data,
+        bool success,
+        bytes memory results
+    ) public override returns (bytes4) {
         console.log("after exec");
-        return BaseHook.afterExecute.selector;
+        return IERC6551Inventory.afterExecute.selector;
     }
 
-    function execute(address _target, uint256 _value, bytes calldata _data, uint8 _operation)
-        external
-        payable
-        override
-        returns (bytes memory _result)
-    {
-        require(_isValidSigner(msg.sender), "Caller is not owner");
-        require(_operation == 0, "Only call operations are supported");
-        ++state;
-        bool success;
-
-        beforeExecute(_data);
-
-        // solhint-disable-next-line avoid-low-level-calls
-        (success, _result) = _target.call{value: _value}(_data);
-        console.log("executing function:", _target);
-        console.log("value:", _value);
-        console.log("data:");
-        console.logBytes(_data);
-
-        afterExecute(_data);
-
-        require(success, string(_result));
-        return _result;
-    }
-
-    function onERC721Received(
-        address operator,
-        address from,
-        uint256 tokenId,
-        bytes calldata data
-    ) external view override returns (bytes4) {
-        ERC6551AccountUpgradeable._revertIfOwnershipCycle(msg.sender, tokenId);
-
-        // bytes4 functionSelector = bytes4(data);
-        // // "equip(address,uint256)"
-        // if (functionSelector != 0xe0e5d2b2) {
-        //     // revert("must use equip(address,uint256) to transfer NFT to inventory");
-        //     revert MustUseEquipFunction();
-        // }
-
-        return IERC721Receiver.onERC721Received.selector;
-    }
 
     function burn(address nft, uint256 tokenId) public {
         // anyone can burn NFTs that are directly transferred into the inventory.

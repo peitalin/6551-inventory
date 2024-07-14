@@ -3,10 +3,9 @@ pragma solidity 0.8.20;
 
 import {Initializable} from "@openzeppelin-upgradeable/contracts/proxy/utils/Initializable.sol";
 import {ERC721URIStorageUpgradeable} from "@openzeppelin-upgradeable/contracts/token/ERC721/extensions/ERC721URIStorageUpgradeable.sol";
+import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
+import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import {Adminable} from "./utils/Adminable.sol";
-import "@openzeppelin/contracts/utils/Strings.sol";
-import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
-import "forge-std/Test.sol";
 
 
 contract Pal721 is Initializable, IERC721Receiver, ERC721URIStorageUpgradeable, Adminable {
@@ -36,17 +35,12 @@ contract Pal721 is Initializable, IERC721Receiver, ERC721URIStorageUpgradeable, 
         uint256 tokenId,
         bytes calldata data
     ) external view override returns (bytes4) {
-        console.log("");
-        console.log("onERC721Received -> call canEquip() hook");
-        console.log("operator: ", operator);
-        console.log("from: ", from);
-        console.logBytes(data);
         return IERC721Receiver.onERC721Received.selector;
     }
 
 
     function _baseURI() internal view override returns (string memory) {
-        return "ifps://";
+        return "ipfs://";
     }
 
 }

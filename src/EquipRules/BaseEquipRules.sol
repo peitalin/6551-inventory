@@ -1,9 +1,9 @@
 // SPDX-License: MIT
 pragma solidity 0.8.20;
 
-import "./IEquipRules.sol";
+import "./IBaseEquipRules.sol";
 
-abstract contract BaseEquipRules is IEquipRules {
+abstract contract BaseEquipRules is IBaseEquipRules {
 
     error ZeroAddress();
     error ZeroAmount();
